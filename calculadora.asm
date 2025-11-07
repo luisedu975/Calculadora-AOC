@@ -1,90 +1,65 @@
 .data
-msg_menu:      .asciiz "=== CALCULADORA DIDATICA ===\n1 - Decimal para Binário\n2 - Decimal para Octal\nEscolha uma opção: "
-msg_input:     .asciiz "\nDigite um número decimal: "
-msg_div:       .asciiz "\nDividindo: "
-msg_por2:      .asciiz " / "
-msg_resto:     .asciiz "  resto: "
-msg_resultado: .asciiz "\n\nResultado: "
-newline:       .asciiz "\n"
+msg_inicial:    .asciiz "=== CALCULADORA DIDÁTICA ===\nDigite um número em base 10: "
+msg_opcoes:     .asciiz "\nEscolha a conversão:\n1 - Converter para base 2 (Binário)\n2 - Converter para base 8 (Octal)\n3 - Converter para base 16 (Hexadecimal)\nOpção: "
+msg_bin_inicio: .asciiz "\nConvertendo para binário...\n"
+msg_oct_inicio: .asciiz "\nConvertendo para octal...\n"
+msg_hexa_inicio:.asciiz "\nConvertendo para hexadecimal...\n"
+msg_passos:     .asciiz " Passo -> Quociente: "
+msg_resto:      .asciiz " Resto: "
+msg_resultado:  .asciiz "\nResultado: "
+msg_fim:        .asciiz "\n\n--- Fim da execução ---\n"
 
-array_restos:  .space 64        # espaço para armazenar restos (máx 64 bits)
+buffer_bin:     .space 33
+buffer_oct:     .space 20
+buffer_hexa:    .space 20
 
 .text
+.globl main
 main:
-    # Mostra o menu
     li $v0, 4
-    la $a0, msg_menu
+    la $a0, msg_inicial
     syscall
 
     li $v0, 5
     syscall
-    move $t9, $v0       # opção escolhida
+    move $t2, $v0
 
-    # Pede número ao usuário
     li $v0, 4
-    la $a0, msg_input
+    la $a0, msg_opcoes
     syscall
 
     li $v0, 5
     syscall
-    move $t0, $v0          # número decimal original
+    move $t0, $v0
 
-    # Decide base (2 ou 8)
-    beq $t9, 1, base2
-    beq $t9, 2, base8
-    j end_program
+    beq $t0, 1, binario
+    beq $t0, 2, octal
+    beq $t0, 3, hexa
+    j fim
 
-# -----------------------------
-# Conversão para base 2
-# -----------------------------
-base2:
-    li $t5, 2
-    j converte
-
-# -----------------------------
-# Conversão para base 8
-# -----------------------------
-base8:
-    li $t5, 8
-    j converte
-
-# -----------------------------
-# Processo de conversão genérico
-# -----------------------------
-converte:
-    move $t1, $t0          # cópia para divisões
-    la $t2, array_restos   # ponteiro para armazenar restos
-    li $t3, 0              # contador de dígitos
-
-    # Caso especial: entrada = 0 -> mostrar "0"
-    beqz $t1, handle_zero
-
-div_loop:
-    beqz $t1, show_result  # se t1 == 0, terminou
-
-    # mostra "Dividindo: X / base"
+# ============================================================
+# BASE 2
+# ============================================================
+binario:
     li $v0, 4
-    la $a0, msg_div
+    la $a0, msg_bin_inicio
     syscall
 
-    li $v0, 1
-    move $a0, $t1
-    syscall
+    move $t1, $t2
+    la $s0, buffer_bin
+    addi $s0, $s0, 32
+    sb $zero, 0($s0)
 
-    li $v0, 4
-    la $a0, msg_por2
-    syscall
-
-    li $v0, 1
-    move $a0, $t5
-    syscall
-
-    # calcula quociente e resto (div $t1, divisor)
-    div $t1, $t5
+loop_bin:
+    beqz $t1, mostra_bin
+    divu $t1, $t1, 2
+    mfhi $t3
     mflo $t1
-    mfhi $t4
 
-    # mostra quociente e resto
+    li $v0, 4
+    la $a0, msg_passos
+    syscall
+
     li $v0, 1
     move $a0, $t1
     syscall
@@ -94,53 +69,137 @@ div_loop:
     syscall
 
     li $v0, 1
-    move $a0, $t4
+    move $a0, $t3
     syscall
 
-    li $v0, 4
-    la $a0, newline
-    syscall
+    addi $s0, $s0, -1
+    addi $t3, $t3, 48
+    sb $t3, 0($s0)
+    j loop_bin
 
-    # guarda resto na memória
-    sb $t4, 0($t2)
-    addi $t2, $t2, 1
-    addi $t3, $t3, 1
-
-    j div_loop
-
-handle_zero:
-    # guarda 0 como único resto
-    sb $zero, 0($t2)
-    addi $t3, $t3, 1
-    j show_result
-
-# -----------------------------
-# Exibe o resultado final
-# -----------------------------
-show_result:
+mostra_bin:
     li $v0, 4
     la $a0, msg_resultado
     syscall
 
-    la $t2, array_restos
-    add $t2, $t2, $t3
-    addi $t2, $t2, -1
+    li $v0, 4
+    move $a0, $s0
+    syscall
 
-print_loop:
-    beqz $t3, end_program    # CORREÇÃO: para quando contador chega a 0
+    j fim
 
-    lb $t4, 0($t2)
+# ============================================================
+# BASE 8
+# ============================================================
+octal:
+    li $v0, 4
+    la $a0, msg_oct_inicio
+    syscall
+
+    move $t1, $t2
+    la $s0, buffer_oct
+    addi $s0, $s0, 20
+    sb $zero, 0($s0)
+
+loop_oct:
+    beqz $t1, mostra_oct
+    divu $t1, $t1, 8
+    mfhi $t3
+    mflo $t1
+
+    li $v0, 4
+    la $a0, msg_passos
+    syscall
+
     li $v0, 1
+    move $a0, $t1
+    syscall
+
+    li $v0, 4
+    la $a0, msg_resto
+    syscall
+
+    li $v0, 1
+    move $a0, $t3
+    syscall
+
+    addi $s0, $s0, -1
+    addi $t3, $t3, 48
+    sb $t3, 0($s0)
+    j loop_oct
+
+mostra_oct:
+    li $v0, 4
+    la $a0, msg_resultado
+    syscall
+
+    li $v0, 4
+    move $a0, $s0
+    syscall
+
+    j fim
+
+# ============================================================
+# BASE 16
+# ============================================================
+hexa:
+    li $v0, 4
+    la $a0, msg_hexa_inicio
+    syscall
+
+    move $t1, $t2
+    la $s0, buffer_hexa
+    addi $s0, $s0, 20
+    sb $zero, 0($s0)
+
+loop_hex:
+    beqz $t1, mostra_hex
+    divu $t1, $t1, 16
+    mfhi $t3
+    mflo $t1
+
+    li $v0, 4
+    la $a0, msg_passos
+    syscall
+
+    li $v0, 1
+    move $a0, $t1
+    syscall
+
+    li $v0, 4
+    la $a0, msg_resto
+    syscall
+
+    blt $t3, 10, digito
+    addi $t4, $t3, 55
+    j print_char
+
+digito:
+    addi $t4, $t3, 48
+
+print_char:
+    li $v0, 11
     move $a0, $t4
     syscall
 
-    addi $t2, $t2, -1
-    addi $t3, $t3, -1
-    j print_loop
+    addi $s0, $s0, -1
+    sb $t4, 0($s0)
+    j loop_hex
 
-# -----------------------------
-# Encerramento
-# -----------------------------
-end_program:
+mostra_hex:
+    li $v0, 4
+    la $a0, msg_resultado
+    syscall
+
+    li $v0, 4
+    move $a0, $s0
+    syscall
+    j fim
+
+# ============================================================
+fim:
+    li $v0, 4
+    la $a0, msg_fim
+    syscall
     li $v0, 10
     syscall
