@@ -1,11 +1,13 @@
 .data
 msg_inicial:    .asciiz "=== CALCULADORA DIDÁTICA ===\nDigite um número em base 10: "
-msg_opcoes:     .asciiz "Escolha a conversão:\n1 - Converter para base 2 (Binário)\n2 - Converter para base 8 (Octal)\n3 - Converter para base 16 (Hexadecimal)\n4 - Converter para BCD (Binary-Coded Decimal)\n5 - Converter para binário com sinal (16 bits, complemento de 2)\nOpção: "
+msg_opcoes:     .asciiz "Escolha a conversão:\n1 - Converter para base 2 (Binário)\n2 - Converter para base 8 (Octal)\n3 - Converter para base 16 (Hexadecimal)\n4 - Converter para BCD (Binary-Coded Decimal)\n5 - Converter para binário com sinal (16 bits, complemento de 2)\n6 - Converter real (decimal) para FLOAT (IEEE-754 32 bits)\n7 - Converter real (decimal) para DOUBLE (IEEE-754 64 bits)\nOpção: "
 msg_bin_inicio: .asciiz "\nConvertendo para binário...\n"
 msg_oct_inicio: .asciiz "\nConvertendo para octal...\n"
 msg_hexa_inicio:.asciiz "\nConvertendo para hexadecimal...\n"
 msg_bcd_inicio: .asciiz "\nConvertendo para BCD...\n"
 msg_signed_inicio: .asciiz "\nConvertendo para binário com sinal (16 bits, complemento de 2)...\n"
+msg_float_inicio: .asciiz "\nConvertendo para FLOAT (IEEE-754 32 bits)...\n"
+msg_double_inicio:.asciiz "\nConvertendo para DOUBLE (IEEE-754 64 bits)...\n"
 msg_passos:     .asciiz " Passo -> Quociente: "
 msg_resto:      .asciiz " Resto: "
 msg_resultado:  .asciiz "\nResultado: "
@@ -16,6 +18,8 @@ buffer_oct:     .space 20
 buffer_hexa:    .space 20
 buffer_bcd:     .space 80
 buffer_signed:  .space 20
+buffer_float:   .space 33     # 32 bits + null
+buffer_double:  .space 65     # 64 bits + null
 
 .text
 .globl main
@@ -26,7 +30,7 @@ main:
 
     li $v0, 5
     syscall
-    move $t2, $v0             # número em base 10
+    move $t2, $v0             # número em base 10 (inteiro, usado nas conversões originais)
 
     li $v0, 4
     la $a0, msg_opcoes
@@ -41,6 +45,8 @@ main:
     beq $t0, 3, hexa
     beq $t0, 4, bcd
     beq $t0, 5, signed16
+    beq $t0, 6, conv_float
+    beq $t0, 7, conv_double
     j fim
 
 # ============================================================
@@ -358,6 +364,247 @@ mostra_signed:
     li $v0, 4
     move $a0, $s0
     syscall
+    j fim
+
+# ============================================================
+# CONVERSÃO PARA FLOAT (IEEE-754 32 bits)
+# ============================================================
+# Usa syscall 6 (read float) -> $f0
+# Movemos os bits de $f0 para $t0 com mfc1 e extraímos sinal/expoente/fração
+# ============================================================
+conv_float:
+    li $v0, 4
+    la $a0, msg_float_inicio
+    syscall
+
+    # ler float decimal do usuário (syscall 6). Resultado em $f0
+    li $v0, 6
+    syscall
+
+    # copiar bits do registrador float ($f0) para inteiro $t0
+    mfc1 $t0, $f0        # $t0 contém pattern de 32 bits da float
+
+    # Montar string de bits (32 bits)
+    la $s0, buffer_float
+    addi $s0, $s0, 32
+    sb $zero, 0($s0)
+    li $t5, 32           # contagem bits
+    move $t6, $t0
+
+build_float_bits:
+    beqz $t5, done_build_float
+    # pega bit menos significativo usando srl (desloca para LSB correspondente)
+    addi $t5, $t5, -1
+    srlv $t7, $t6, $t5   # t7 = t6 >> ($t5)
+    andi $t7, $t7, 1
+    addi $t7, $t7, 48
+    addi $s0, $s0, -1
+    sb $t7, 0($s0)
+    j build_float_bits
+
+done_build_float:
+    # imprimir resultado (bits)
+    li $v0, 4
+    la $a0, msg_resultado
+    syscall
+
+    li $v0, 4
+    move $a0, $s0
+    syscall
+
+    # extrair sinal, expoente e fração
+    # sinal: bit 31
+    srl $t1, $t0, 31
+    andi $t1, $t1, 1
+
+    # expoente (8 bits): bits 30..23
+    srl $t2, $t0, 23
+    li $t8, 255
+    and $t2, $t2, $t8    # t2 = exponent field (biased)
+
+    # fração (mantissa) 23 bits: bits 22..0
+    li $t9, 0x7FFFFF
+    and $t3, $t0, $t9    # t3 = fraction field
+
+    # imprimir valores (sinal, expoente, fração)
+    li $v0, 4
+    la $a0, msg_resto   # usar msg_resto temporário (reaproveito msg)
+    syscall
+
+    # Print "Sinal: "
+    la $a0, msg_resultado
+    li $v0, 4
+    syscall
+
+    # Print Sinal (integer)
+    li $v0, 1
+    move $a0, $t1
+    syscall
+
+    # Print newline
+    li $v0, 11
+    li $a0, 10
+    syscall
+
+    # Print "Expoente (campo, com viés): "
+    li $v0, 4
+    la $a0, msg_passos
+    syscall
+
+    li $v0, 1
+    move $a0, $t2
+    syscall
+
+    # newline
+    li $v0, 11
+    li $a0, 10
+    syscall
+
+    # Print "Fração (campo): "
+    li $v0, 4
+    la $a0, msg_resto
+    syscall
+
+    li $v0, 1
+    move $a0, $t3
+    syscall
+
+    # newline
+    li $v0, 11
+    li $a0, 10
+    syscall
+
+    j fim
+
+# ============================================================
+# CONVERSÃO PARA DOUBLE (IEEE-754 64 bits)
+# ============================================================
+# Usa syscall 7 (read double) -> $f0 (64 bits em $f0/$f1)
+# extraímos $f1 (msw) e $f0 (lsw) com mfc1
+# ============================================================
+conv_double:
+    li $v0, 4
+    la $a0, msg_double_inicio
+    syscall
+
+    # ler double decimal do usuário (syscall 7). Resultado em $f0/$f1
+    li $v0, 7
+    syscall
+
+    # mover palavras do double para inteiros
+    # convention (MARS/QtSpim): mfc1 $t0,$f0 -> baixa 32 bits (lsw)
+    #                         mfc1 $t1,$f1 -> alta 32 bits (msw)
+    mfc1 $t0, $f0    # low 32 bits
+    mfc1 $t1, $f1    # high 32 bits
+
+    # construir string de 64 bits: primeiro os bits do word alto (t1) 31..0, depois low (t0)
+    la $s0, buffer_double
+    addi $s0, $s0, 64
+    sb $zero, 0($s0)
+
+    # processar 32 bits do high word t1
+    li $t5, 32
+build_double_high:
+    beqz $t5, build_double_low
+    addi $t5, $t5, -1
+    srlv $t7, $t1, $t5
+    andi $t7, $t7, 1
+    addi $t7, $t7, 48
+    addi $s0, $s0, -1
+    sb $t7, 0($s0)
+    j build_double_high
+
+build_double_low:
+    li $t5, 32
+build_double_low_loop:
+    beqz $t5, done_build_double
+    addi $t5, $t5, -1
+    srlv $t7, $t0, $t5
+    andi $t7, $t7, 1
+    addi $t7, $t7, 48
+    addi $s0, $s0, -1
+    sb $t7, 0($s0)
+    j build_double_low_loop
+
+done_build_double:
+    # imprimir bits (64)
+    li $v0, 4
+    la $a0, msg_resultado
+    syscall
+
+    li $v0, 4
+    move $a0, $s0
+    syscall
+
+    # extrair sinal, expoente (11 bits) e fração (52 bits)
+    # sinal: bit 63 -> bit 31 of high word t1
+    srl $t2, $t1, 31
+    andi $t2, $t2, 1
+
+    # expoente (11 bits): bits 62..52 -> high word bits 30..20
+    srl $t3, $t1, 20
+    li $t8, 0x7FF
+    and $t3, $t3, $t8   # t3 = exponent field (biased)
+
+    # fração (52 bits) -> lower 20 bits of t1 and all 32 bits of t0
+    # high 20 bits of fraction:
+    li $t9, 0xFFFFF
+    and $t4, $t1, $t9   # t4 = top 20 bits of fraction
+    move $t5, $t0       # t5 = low 32 bits of fraction
+
+    # imprimir sinal
+    li $v0, 4
+    la $a0, msg_passos
+    syscall
+
+    li $v0, 1
+    move $a0, $t2
+    syscall
+
+    # newline
+    li $v0, 11
+    li $a0, 10
+    syscall
+
+    # imprimir expoente (campo, com viés)
+    li $v0, 4
+    la $a0, msg_resto
+    syscall
+
+    li $v0, 1
+    move $a0, $t3
+    syscall
+
+    # newline
+    li $v0, 11
+    li $a0, 10
+    syscall
+
+    # imprimir fração: mostra as duas partes (alta 20 e baixa 32)
+    li $v0, 4
+    la $a0, msg_passos
+    syscall
+
+    # print high 20 bits (as integer)
+    li $v0, 1
+    move $a0, $t4
+    syscall
+
+    # print separator
+    li $v0, 11
+    li $a0, 32
+    syscall
+
+    # print low 32 bits
+    li $v0, 1
+    move $a0, $t5
+    syscall
+
+    # newline
+    li $v0, 11
+    li $a0, 10
+    syscall
+
     j fim
 
 # ============================================================
