@@ -1,9 +1,10 @@
 .data
 msg_inicial:    .asciiz "=== CALCULADORA DIDÁTICA ===\nDigite um número em base 10: "
-msg_opcoes:     .asciiz "\nEscolha a conversão:\n1 - Converter para base 2 (Binário)\n2 - Converter para base 8 (Octal)\n3 - Converter para base 16 (Hexadecimal)\nOpção: "
+msg_opcoes:     .asciiz "\nEscolha a conversão:\n1 - Converter para base 2 (Binário)\n2 - Converter para base 8 (Octal)\n3 - Converter para base 16 (Hexadecimal)\n4 - Converter para BCD (Binary-Coded Decimal)\nOpção: "
 msg_bin_inicio: .asciiz "\nConvertendo para binário...\n"
 msg_oct_inicio: .asciiz "\nConvertendo para octal...\n"
 msg_hexa_inicio:.asciiz "\nConvertendo para hexadecimal...\n"
+msg_bcd_inicio: .asciiz "\nConvertendo para BCD...\n"
 msg_passos:     .asciiz " Passo -> Quociente: "
 msg_resto:      .asciiz " Resto: "
 msg_resultado:  .asciiz "\nResultado: "
@@ -12,6 +13,7 @@ msg_fim:        .asciiz "\n\n--- Fim da execução ---\n"
 buffer_bin:     .space 33
 buffer_oct:     .space 20
 buffer_hexa:    .space 20
+buffer_bcd:     .space 80     # espaço maior para armazenar os bits de cada dígito
 
 .text
 .globl main
@@ -22,7 +24,7 @@ main:
 
     li $v0, 5
     syscall
-    move $t2, $v0
+    move $t2, $v0             # número em base 10
 
     li $v0, 4
     la $a0, msg_opcoes
@@ -30,11 +32,12 @@ main:
 
     li $v0, 5
     syscall
-    move $t0, $v0
+    move $t0, $v0             # opção escolhida
 
     beq $t0, 1, binario
     beq $t0, 2, octal
     beq $t0, 3, hexa
+    beq $t0, 4, bcd
     j fim
 
 # ============================================================
@@ -197,9 +200,58 @@ mostra_hex:
     j fim
 
 # ============================================================
+# BASE BCD (Binary-Coded Decimal)
+# ============================================================
+bcd:
+    li $v0, 4
+    la $a0, msg_bcd_inicio
+    syscall
+
+    move $t1, $t2
+    la $s0, buffer_bcd
+    addi $s0, $s0, 79
+    sb $zero, 0($s0)
+
+loop_bcd:
+    beqz $t1, mostra_bcd
+    divu $t1, $t1, 10
+    mfhi $t3       # dígito atual
+    mflo $t1
+
+    # converte o dígito ($t3) em 4 bits binários
+    li $t5, 4
+
+conv_bits:
+    beqz $t5, fim_digito
+    andi $t6, $t3, 1
+    srl $t3, $t3, 1
+    addi $t6, $t6, 48
+    addi $s0, $s0, -1
+    sb $t6, 0($s0)
+    addi $t5, $t5, -1
+    j conv_bits
+
+fim_digito:
+    addi $s0, $s0, -1
+    li $t7, 32       # espaço entre grupos de 4 bits
+    sb $t7, 0($s0)
+    j loop_bcd
+
+mostra_bcd:
+    li $v0, 4
+    la $a0, msg_resultado
+    syscall
+
+    li $v0, 4
+    move $a0, $s0
+    syscall
+    j fim
+
+# ============================================================
 fim:
     li $v0, 4
     la $a0, msg_fim
     syscall
+
     li $v0, 10
     syscall
